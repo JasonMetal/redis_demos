@@ -6,6 +6,7 @@ namespace think\log\driver;
 
 use think\App;
 use think\Config;
+use think\Db;
 use think\Request;
 
 /**
@@ -14,6 +15,7 @@ use think\Request;
 class RedisLog
 {
     var    $redis;
+    var            $db_prefix;
     public $log_key  = 'log';
     public $host     = "";
     public $password = "";
@@ -147,7 +149,10 @@ class RedisLog
             }
             // 完毕
             $arr_msg = ['request_info' => $requestInfo, 'msg' => $message];
-            $ret     = $this->rPush($this->log_key, json_encode($arr_msg, true));
+//            $ret     = $this->rPush($this->log_key, json_encode($arr_msg, true));
+            $now_time = date("Y-m-d H:i:s");
+            $ret      = $this->rPush($this->log_key, json_encode($arr_msg, true) . "%" . $now_time);
+            $this->close();
             var_dump("入队的结果", $ret);
             if ($ret) {
                 return $ret;
@@ -193,14 +198,83 @@ class RedisLog
      * @user   : XiaoMing
      * @time   : 2020/6/19_17:33
      */
+    public function batchPopToDb($table)
+    {
+            // 获取现有消息队列的长度
+        $count = 0;
+        $max   = $this->lLen($this->log_key);
+            // 获取消息队列的内容，拼接sql
+        $insert_sql = "insert into $table (`log_json`, `create_time`) values ";
+
+            // 回滚数组
+        $roll_back_arr = [];
+        $arr_tmp       = [];
+        $arr_in        = [];
+        while ($count < $max) {
+            $log_info        = $this->lPop($this->log_key);
+            $roll_back_arr[] = $log_info;
+            if ($log_info == 'nil' || !isset($log_info)) {
+                $insert_sql .= ";";
+                break;
+            }
+            // 切割出时间和info
+            $log_info_arr = explode("%", $log_info);
+            $insert_sql   .= " ('" . $log_info_arr[0] . "','" . $log_info_arr[1] . "'),";
+            $arr_tmp[]
+                          = ['log_json' => $log_info_arr[0], 'create_time' => $log_info_arr[1]];
+            $count++;
+        }
+// 判定存在数据，批量入库
+        if ($count != 0) {
+//            $link_2004 = mysql_connect('ip:port', 'user', 'password');
+//            if (!$link_2004) {
+//                die("Could not connect:" . mysql_error());
+//            }
+//            $crowd_db = mysql_select_db('fb_log', $link_2004);
+            $insert_sql = rtrim($insert_sql, ",") . ";";
+//            $res = Db::execute($insert_sql);
+            foreach ($arr_tmp as $k => $v) {
+                $arr['log_json']    = $v['log_json'];
+                $arr['create_time'] = $v['create_time'];
+                $arr_in[]           = $arr;
+            }
+            $res = Db::table($table)->insertAll($arr_in);
+            // 输出入库log和入库结果;
+            echo date("Y-m-d H:i:s") . " insert " . $count . " log info result:";
+            echo json_encode($res);
+            echo "</br>\n";
+            echo execute_time();
+            // 数据库插入失败回滚
+            if (!$res) {
+                foreach ($roll_back_arr as $value) {
+                    $this->rPush($this->log_key, $value);
+                }
+            }
+            // 释放连接
+            //            mysql_free_result($res);
+        }
+            // 释放redis
+        $this->close();
+    }
+
+    /**
+     * @Notes  : RedisLog 模块
+     * ->@Notes  : 逐个入库
+     * @param $table
+     * @return :int|string
+     * @throws \think\Exception
+     * @throws \think\exception\PDOException
+     * @user   : XiaoMing
+     * @time   : 2020/6/20_17:34
+     */
     public function logPopToDb($table)
     {
-        $count         = 0;
+        $count = 0;
         while (true) {
             var_dump("队列长度为" . $this->lLen($this->log_key) . '开始----');
             try {
                 if ($this->lLen($this->log_key) > 0) {
-
+                    var_dump("出栈开始----");
                     $task = $this->lPop($this->log_key);
                     if ($task == 'nil' || !isset($task)) {
                         sleep(3);
@@ -210,7 +284,14 @@ class RedisLog
                     if (!empty($task)) {
                         $inse_data['log_json'] = $task;
                         var_dump("出队的值$count", $task);
-                        $res1                = \think\Db::table('test')->insertGetId($inse_data);
+                        $res1 = \think\Db::table('test')->insertGetId($inse_data);
+//                        $res1                = false;
+                        // 数据库插入失败回滚
+                        if (!$res1) {
+                            $this->rPush($this->log_key, $task);
+                            continue;
+                        }
+                        var_dump($this->lLen($this->log_key));
                         $sql                 = \think\Db::table('test')->getLastSql();
                         $log_sql ['log_sql'] = $sql;
                         $res2                = \think\Db::table('test')->where('id', '=', $res1)->update($log_sql);
@@ -224,19 +305,6 @@ class RedisLog
                 echo $exception->getMessage();
             }
             $count++;
-        }
-        exit;
-        // 判定存在数据，批量入库
-        if ($count != 0) {
-            // 输出入库log和入库结果;
-            $inse_data = ['log_json' => $log_json_str];
-            $res       = \think\Db::table('test')->insertGetId($inse_data);
-            // 数据库插入失败回滚
-            if (!$res) {
-                foreach ($roll_back_arr as $k) {
-                    $this->rPush($this->log_key, $k);
-                }
-            }
         }
         return $count;
     }
