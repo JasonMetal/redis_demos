@@ -5,9 +5,11 @@
 namespace think\log\driver;
 
 use think\App;
-use think\Config;
 use think\Db;
+use think\Exception;
 use think\Request;
+//2020-6-23 17:42:20
+ini_set('memory_limit', '-1');
 
 /**
  * 本地化调试输出到文件
@@ -15,7 +17,6 @@ use think\Request;
 class RedisLog
 {
     var            $redis;
-    var            $db_prefix;
     public         $log_key  = 'log';
     public         $host     = "";
     public         $password = "";
@@ -73,7 +74,6 @@ class RedisLog
      */
     public function __call($name, $arguments)
     {
-        ///var_dump(...$arguments);
         return $this->redis->$name(...$arguments);
     }
 
@@ -87,6 +87,7 @@ class RedisLog
      * @access public
      * @param array $log 日志信息
      * @param bool $append 是否追加请求信息
+     * @param bool $apart false 增加额外的调试信息
      * @return bool
      */
     public function save(array $log = [], $append = false, $apart = false)
@@ -94,8 +95,6 @@ class RedisLog
         $request = Request::instance();
         // 获取信息
         try {
-            $userinfo    = [];
-            $userinfo    = session('userinfo');
             $requestInfo = [
                 'url'        => $request->url(true),
                 'domain'     => $request->domain(),
@@ -120,7 +119,7 @@ class RedisLog
                 'body'       => json_encode(input('param.'), true),
                 'time'       => date('Y-m-d H:i:s', time()),
             ];
-            $info        = [];
+             $info        = [];
             foreach ($log as $type => $val) {
                 foreach ($val as $msg) {
                     if (!is_string($msg)) {
@@ -128,10 +127,7 @@ class RedisLog
                     }
                     $info[$type][] = $this->config['json'] ? $msg : '[ ' . $type . ' ] ' . $msg;
                 }
-                if (!$this->config['json'] && (true === $this->config['apart_level'] || in_array($type, $this->config['apart_level']))) {
-                    //                    $this->write($info[$type], $filename, true, $append);
-                    //                    unset($info[$type]);
-                }
+
             }
             // 日志信息封装
             $info['timestamp'] = date($this->config['time_format']);
@@ -146,20 +142,23 @@ class RedisLog
                 $message = $this->parseLog($info);
             }
             // 完毕
-            $arr_msg = ['request_info' => $requestInfo, 'msg' => $message];
-//            $ret     = $this->rPush($this->log_key, json_encode($arr_msg, true));
+            $arr_msg  = ['request_info' => $requestInfo, 'msg' => $message];
             $now_time = date("Y-m-d H:i:s");
             $ret      = $this->rPush($this->log_key, json_encode($arr_msg, true) . "%" . $now_time);
             $this->close();
-            var_dump("入队的结果", $ret);
-            if ($ret) {
-                return $ret;
-            }
-            return true;
         } catch (\RedisException $exception) {
-            echo $exception->getMessage();
+            throw new Exception($exception->getMessage());
         }
+
+        if (!empty($ret)) {
+            var_dump("入队的结果", $ret);
+            return $ret;
+        } else {
+            return "入队失败了！";
+        }
+//        return true;
     }
+
 
     /**
      * @Notes  : RedisLog 模块
@@ -194,10 +193,10 @@ class RedisLog
      */
     public function batchPopToMongoDb($table)
     {
-            // 获取现有消息队列的长度
+        // 获取现有消息队列的长度
         $count = 0;
         $max   = $this->lLen($this->log_key);
-            // 回滚数组
+        // 回滚数组
         $roll_back_arr = [];
         $arr_tmp       = [];
         $arr_in        = [];
@@ -209,11 +208,11 @@ class RedisLog
             }
             // 切割出时间和info
             $log_info_arr = explode("%", $log_info);
-            $arr_tmp[] =
-                ['log_json' => $log_info_arr[0], 'create_time' => $log_info_arr[1]];
+            $arr_tmp[]
+                          = ['log_json' => $log_info_arr[0], 'create_time' => $log_info_arr[1]];
             $count++;
         }
-            // 判定存在数据，批量入库
+        // 判定存在数据，批量入库
         if ($count != 0) {
             foreach ($arr_tmp as $k => $v) {
                 $arr['log_json']    = $v['log_json'];
@@ -233,21 +232,18 @@ class RedisLog
                     $this->rPush($this->log_key, $value);
                 }
             }
-            // 释放连接
-            //            mysql_free_result($res);
         }
-            // 释放redis
+        // 释放redis
         $this->close();
     }
 
 
-
-    public function batchPopToDbbak($table)
+    public function batchPopToDb($table)
     {
-            // 获取现有消息队列的长度
+        // 获取现有消息队列的长度
         $count = 0;
         $max   = $this->lLen($this->log_key);
-            // 回滚数组
+        // 回滚数组
         $roll_back_arr = [];
         $arr_tmp       = [];
         $arr_in        = [];
@@ -263,14 +259,14 @@ class RedisLog
                 ['log_json' => $log_info_arr[0], 'create_time' => $log_info_arr[1]];
             $count++;
         }
-            // 判定存在数据，批量入库
+        // 判定存在数据，批量入库
         if ($count != 0) {
             foreach ($arr_tmp as $k => $v) {
                 $arr['log_json']    = $v['log_json'];
                 $arr['create_time'] = $v['create_time'];
                 $arr_in[]           = $arr;
             }
-            $res = Db::table($table)->insertAll($arr_in);
+            $res = Db::connect(Config('mysql_db'))->table($table)->insertAll($arr_in);
             var_dump('$res', $res);
             // 输出入库log和入库结果;
             echo date("Y-m-d H:i:s") . " insert " . $count . " log info result:";
@@ -283,10 +279,8 @@ class RedisLog
                     $this->rPush($this->log_key, $value);
                 }
             }
-            // 释放连接
-            //            mysql_free_result($res);
         }
-            // 释放redis
+        // 释放redis
         $this->close();
     }
 
