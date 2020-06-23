@@ -14,15 +14,14 @@ use think\Request;
  */
 class RedisLog
 {
-    var    $redis;
+    var            $redis;
     var            $db_prefix;
-    public $log_key  = 'log';
-    public $host     = "";
-    public $password = "";
-    public $port     = "";
-
+    public         $log_key  = 'log';
+    public         $host     = "";
+    public         $password = "";
+    public         $port     = "";
     protected      $config
-        = [
+                             = [
             'time_format' => ' c ',
             'single'      => false,
             'file_size'   => 2097152,
@@ -77,7 +76,6 @@ class RedisLog
         ///var_dump(...$arguments);
         return $this->redis->$name(...$arguments);
     }
-
 
     public function close()
     {
@@ -161,7 +159,6 @@ class RedisLog
         } catch (\RedisException $exception) {
             echo $exception->getMessage();
         }
-
     }
 
     /**
@@ -174,7 +171,6 @@ class RedisLog
      */
     public function returnConArr($task)
     {
-
         $log_info = json_decode($task, true);
         $log      = $log_info['request_info'];
         for ($i = 0; $i < strlen($log['controller']); $i++) {
@@ -185,9 +181,7 @@ class RedisLog
                 $i++;
             }
         }
-
         $log_info['request_info'] = $log;
-
         return $log_info;
     }
 
@@ -198,14 +192,11 @@ class RedisLog
      * @user   : XiaoMing
      * @time   : 2020/6/19_17:33
      */
-    public function batchPopToDb($table)
+    public function batchPopToMongoDb($table)
     {
             // 获取现有消息队列的长度
         $count = 0;
         $max   = $this->lLen($this->log_key);
-            // 获取消息队列的内容，拼接sql
-        $insert_sql = "insert into $table (`log_json`, `create_time`) values ";
-
             // 回滚数组
         $roll_back_arr = [];
         $arr_tmp       = [];
@@ -214,31 +205,73 @@ class RedisLog
             $log_info        = $this->lPop($this->log_key);
             $roll_back_arr[] = $log_info;
             if ($log_info == 'nil' || !isset($log_info)) {
-                $insert_sql .= ";";
                 break;
             }
             // 切割出时间和info
             $log_info_arr = explode("%", $log_info);
-            $insert_sql   .= " ('" . $log_info_arr[0] . "','" . $log_info_arr[1] . "'),";
-            $arr_tmp[]
-                          = ['log_json' => $log_info_arr[0], 'create_time' => $log_info_arr[1]];
+            $arr_tmp[] =
+                ['log_json' => $log_info_arr[0], 'create_time' => $log_info_arr[1]];
             $count++;
         }
-// 判定存在数据，批量入库
+            // 判定存在数据，批量入库
         if ($count != 0) {
-//            $link_2004 = mysql_connect('ip:port', 'user', 'password');
-//            if (!$link_2004) {
-//                die("Could not connect:" . mysql_error());
-//            }
-//            $crowd_db = mysql_select_db('fb_log', $link_2004);
-            $insert_sql = rtrim($insert_sql, ",") . ";";
-//            $res = Db::execute($insert_sql);
             foreach ($arr_tmp as $k => $v) {
                 $arr['log_json']    = $v['log_json'];
                 $arr['create_time'] = $v['create_time'];
                 $arr_in[]           = $arr;
             }
             $res = Db::table($table)->insertAll($arr_in);
+            var_dump('$res', $res);
+            // 输出入库log和入库结果;
+            echo date("Y-m-d H:i:s") . " insert " . $count . " log info result:";
+            echo json_encode($res);
+            echo "</br>\n";
+            echo execute_time();
+            // 数据库插入失败回滚
+            if (!$res) {
+                foreach ($roll_back_arr as $value) {
+                    $this->rPush($this->log_key, $value);
+                }
+            }
+            // 释放连接
+            //            mysql_free_result($res);
+        }
+            // 释放redis
+        $this->close();
+    }
+
+
+
+    public function batchPopToDbbak($table)
+    {
+            // 获取现有消息队列的长度
+        $count = 0;
+        $max   = $this->lLen($this->log_key);
+            // 回滚数组
+        $roll_back_arr = [];
+        $arr_tmp       = [];
+        $arr_in        = [];
+        while ($count < $max) {
+            $log_info        = $this->lPop($this->log_key);
+            $roll_back_arr[] = $log_info;
+            if ($log_info == 'nil' || !isset($log_info)) {
+                break;
+            }
+            // 切割出时间和info
+            $log_info_arr = explode("%", $log_info);
+            $arr_tmp[] =
+                ['log_json' => $log_info_arr[0], 'create_time' => $log_info_arr[1]];
+            $count++;
+        }
+            // 判定存在数据，批量入库
+        if ($count != 0) {
+            foreach ($arr_tmp as $k => $v) {
+                $arr['log_json']    = $v['log_json'];
+                $arr['create_time'] = $v['create_time'];
+                $arr_in[]           = $arr;
+            }
+            $res = Db::table($table)->insertAll($arr_in);
+            var_dump('$res', $res);
             // 输出入库log和入库结果;
             echo date("Y-m-d H:i:s") . " insert " . $count . " log info result:";
             echo json_encode($res);
