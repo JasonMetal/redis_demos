@@ -8,6 +8,7 @@ use think\App;
 use think\Db;
 use think\Exception;
 use think\Request;
+
 //2020-6-23 17:42:20
 ini_set('memory_limit', '-1');
 
@@ -118,8 +119,9 @@ class RedisLog
                 'agent'      => $_SERVER['HTTP_USER_AGENT'],
                 'body'       => json_encode(input('param.'), true),
                 'time'       => date('Y-m-d H:i:s', time()),
+                'server_ip'  => $_SERVER['SERVER_ADDR'],
             ];
-             $info        = [];
+            $info        = [];
             foreach ($log as $type => $val) {
                 foreach ($val as $msg) {
                     if (!is_string($msg)) {
@@ -255,8 +257,8 @@ class RedisLog
             }
             // 切割出时间和info
             $log_info_arr = explode("%", $log_info);
-            $arr_tmp[] =
-                ['log_json' => $log_info_arr[0], 'create_time' => $log_info_arr[1]];
+            $arr_tmp[]
+                          = ['log_json' => $log_info_arr[0], 'create_time' => $log_info_arr[1]];
             $count++;
         }
         // 判定存在数据，批量入库
