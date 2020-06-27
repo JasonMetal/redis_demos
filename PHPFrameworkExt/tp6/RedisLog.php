@@ -1,12 +1,4 @@
 <?php
-/*
- * @Author: your name
- * @Date: 2020-06-27 18:14:51
- * @LastEditTime: 2020-06-27 18:16:25
- * @LastEditors: Please set LastEditors
- * @Description: In User Settings Edit
- * @FilePath: \tp6\RedisLog.php
- */ 
 // +----------------------------------------------------------------------
 // | ThinkPHP [ WE CAN DO IT JUST THINK IT ]
 // +----------------------------------------------------------------------
@@ -20,6 +12,8 @@ declare (strict_types=1);
 
 namespace think\log\driver;
 
+use MongoDB\Collection;
+use MongoDB\Driver\Manager;
 use think\App;
 use think\contract\LogHandlerInterface;
 use think\Exception;
@@ -36,6 +30,10 @@ class RedisLog implements LogHandlerInterface
     public $host = "";
     public $password = "";
     public $port = "";
+
+    protected $mongoManager;
+    protected $mongoCollection;
+
     private static $_instance;
     /**
      * 配置参数
@@ -66,22 +64,16 @@ class RedisLog implements LogHandlerInterface
         $this->redis = new \Redis();
         $this->redis->connect($this->host, $this->port);
         $auth = $this->redis->auth($this->password);
+
+        $this->mongoManager = new Manager($this->getUri());
+        $this->mongoCollection = new Collection($this->mongoManager, "redis_log", "test");
+
         return $this->redis;
-//        if (is_array($config)) {
-//            $this->config = array_merge($this->config, $config);
-//        }
-//
-//        if (empty($this->config['format'])) {
-//            $this->config['format'] = '[%s][%s] %s';
-//        }
-//
-//        if (empty($this->config['path'])) {
-//            $this->config['path'] = $app->getRuntimePath() . 'log';
-//        }
-//
-//        if (substr($this->config['path'], -1) != DIRECTORY_SEPARATOR) {
-//            $this->config['path'] .= DIRECTORY_SEPARATOR;
-//        }
+    }
+
+    protected function getUri()
+    {
+        return getenv('MONGODB_URI') ?: 'mongodb://127.0.0.1:27017';
     }
 
     static public function getInstance()
@@ -184,6 +176,13 @@ class RedisLog implements LogHandlerInterface
                 }
                 $info[$type] = $message;
             }
+//        if (PHP_SAPI == 'cli') {
+//            $message = $this->parseCliLog($info);
+//        } else {
+//            // 添加调试日志
+//            $this->getDebugLog($info, $append, $apart);
+//            $message = $this->parseLog($info);
+//        }
             // 完毕
             $arr_msg = ['request_info' => $requestInfo, 'msg' => $message];
             $now_time = date("Y-m-d H:i:s");
@@ -199,7 +198,10 @@ class RedisLog implements LogHandlerInterface
         } else {
            return "入队失败了！";
         }
- 
+        if ($info) {
+//            return $this->write($info, $destination);
+        }
+//
         return true;
     }
 
@@ -232,19 +234,17 @@ class RedisLog implements LogHandlerInterface
                 = ['log_json' => $log_info_arr[0], 'create_time' => $log_info_arr[1]];
             $count++;
         }
-        dd(\think\facade\Db::connect('mongo')->table($table)->select());
-
+        var_dump($count);
+        var_dump($max);
         // 判定存在数据，批量入库
         if ($count != 0) {
-
-            $res = Db::connect('mongo')->table($table)->insertAll($arr_tmp);
-
+//            $res = Db::connect('mongo')->table($table)->insertAll($arr_tmp);
+            $res =  $this->mongoCollection->insertMany($arr_tmp);
             var_dump('$res', $res);
             // 输出入库log和入库结果;
             echo date("Y-m-d H:i:s") . " insert " . $count . " log info result:";
             echo json_encode($res);
             echo "</br>\n";
-            echo execute_time();
             // 数据库插入失败回滚
             if (!$res) {
                 foreach ($roll_back_arr as $value) {
