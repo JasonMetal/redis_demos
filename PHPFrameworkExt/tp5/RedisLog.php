@@ -3,7 +3,8 @@
 // redis 记录日志
 //+----------------------------------------------------------------------
 namespace think\log\driver;
-
+use MongoDB\Collection;
+use MongoDB\Driver\Manager;
 use think\App;
 use think\Db;
 use think\Exception;
@@ -22,6 +23,10 @@ class RedisLog
     public         $host     = "";
     public         $password = "";
     public         $port     = "";
+
+    protected      $mongoManager;
+    protected      $mongoCollection;
+
     protected      $config
                              = [
             'time_format' => ' c ',
@@ -41,9 +46,18 @@ class RedisLog
         $this->port     = Config("REDIS_PORT");
         $this->redis    = new \Redis();
         $this->redis->connect($this->host, $this->port);
-//        $auth = $this->redis->auth($password);
+//        $auth = $this->redis->auth($this->password);
+        $this->mongoManager    = new Manager($this->getUri());
+        $this->mongoCollection = new Collection($this->mongoManager, "redis_log", "test");
+
         return $this->redis;
     }
+
+    protected function getUri()
+    {
+        return getenv('MONGODB_URI') ?: 'mongodb://127.0.0.1:27017';
+    }
+
 
     static public function getInstance()
     {
@@ -144,7 +158,7 @@ class RedisLog
                 $message = $this->parseLog($info);
             }
             // 完毕
-            $arr_msg  = ['request_info' => $requestInfo, 'msg' => $message];
+            $arr_msg = ['request_info' => $requestInfo, 'msg' => $message];
             $now_time = date("Y-m-d H:i:s");
             $ret      = $this->rPush($this->log_key, json_encode($arr_msg, true) . "%" . $now_time);
             $this->close();
@@ -186,9 +200,10 @@ class RedisLog
         return $log_info;
     }
 
+
     /**
      * @Notes  : RedisLog 模块
-     * ->@Notes  : 日志出栈
+     * ->@Notes  : 日志出栈到MongoDB
      * @param $table
      * @user   : XiaoMing
      * @time   : 2020/6/19_17:33
@@ -209,25 +224,51 @@ class RedisLog
                 break;
             }
             // 切割出时间和info
+           
             $log_info_arr = explode("%", $log_info);
+
+            //{\"request_info\":
+            $pre_log_info     = substr($log_info_arr[0], 0, 16);
+            $request_info     = $log_info_arr[0];
+            $arr_request_info = json_decode($request_info, true);
+
+            $method     = $arr_request_info['request_info']['method'];
+            $ip         = $arr_request_info['request_info']['ip'];
+            $server_ip  = $arr_request_info['request_info']['server_ip'];
+            $time       = $arr_request_info['request_info']['time'];
+            $domain     = $arr_request_info['request_info']['domain'];
+            $host       = $arr_request_info['request_info']['host'];
+            $uri        = $arr_request_info['request_info']['uri'];
+            $pathinfo   = $arr_request_info['request_info']['pathinfo'];
+            $isAjax     = $arr_request_info['request_info']['isAjax'];
+            $user_agent = $arr_request_info['request_info']['user-agent'];
+            $body       = $arr_request_info['request_info']['body'];
             $arr_tmp[]
-                          = ['log_json' => $log_info_arr[0], 'create_time' => $log_info_arr[1]];
+                        = [
+                'method'          => $method,
+                'ip'              => $ip,
+                'server_ip'       => $server_ip,
+                'time'            => $time,
+                'domain'          => $domain,
+                'host'            => $host,
+                'uri'             => $uri,
+                'pathinfo'        => $pathinfo,
+                'is_ajax'         => $isAjax,
+                'user_agent'      => $user_agent,
+                'body'            => $body,
+                'prefix_log_json' => $pre_log_info,
+                'log_json'        => $log_info_arr[0],
+                'create_time'     => $log_info_arr[1],
+            ];
             $count++;
         }
         // 判定存在数据，批量入库
         if ($count != 0) {
-            foreach ($arr_tmp as $k => $v) {
-                $arr['log_json']    = $v['log_json'];
-                $arr['create_time'] = $v['create_time'];
-                $arr_in[]           = $arr;
-            }
-            $res = Db::table($table)->insertAll($arr_in);
-            var_dump('$res', $res);
+            $res = $this->mongoCollection->insertMany($arr_tmp);
             // 输出入库log和入库结果;
             echo date("Y-m-d H:i:s") . " insert " . $count . " log info result:";
             echo json_encode($res);
             echo "</br>\n";
-            echo execute_time();
             // 数据库插入失败回滚
             if (!$res) {
                 foreach ($roll_back_arr as $value) {
@@ -240,6 +281,13 @@ class RedisLog
     }
 
 
+    /**
+     * @Notes  : xx 模块
+     * ->@Notes  : 日志出栈到MySQL
+     * @param $table
+     * @user   : XiaoMing
+     * @time   : 2020/6/28_13:35
+     */
     public function batchPopToDb($table)
     {
         // 获取现有消息队列的长度
@@ -257,16 +305,22 @@ class RedisLog
             }
             // 切割出时间和info
             $log_info_arr = explode("%", $log_info);
+            $pre_log_info = substr($log_info_arr[0], 0, 16);
             $arr_tmp[]
-                          = ['log_json' => $log_info_arr[0], 'create_time' => $log_info_arr[1]];
+                          = [
+                'prefix_log_json' => $pre_log_info,
+                'log_json'        => $log_info_arr[0],
+                'create_time'     => $log_info_arr[1],
+            ];
             $count++;
         }
         // 判定存在数据，批量入库
         if ($count != 0) {
             foreach ($arr_tmp as $k => $v) {
-                $arr['log_json']    = $v['log_json'];
-                $arr['create_time'] = $v['create_time'];
-                $arr_in[]           = $arr;
+                $arr['prefix_log_json'] = $v['prefix_log_json'];
+                $arr['log_json']        = $v['log_json'];
+                $arr['create_time']     = $v['create_time'];
+                $arr_in[]               = $arr;
             }
             $res = Db::connect(Config('mysql_db'))->table($table)->insertAll($arr_in);
             var_dump('$res', $res);
@@ -274,7 +328,7 @@ class RedisLog
             echo date("Y-m-d H:i:s") . " insert " . $count . " log info result:";
             echo json_encode($res);
             echo "</br>\n";
-            echo execute_time();
+//            echo execute_time();
             // 数据库插入失败回滚
             if (!$res) {
                 foreach ($roll_back_arr as $value) {
