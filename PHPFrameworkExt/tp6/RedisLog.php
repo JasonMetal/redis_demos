@@ -25,11 +25,11 @@ use think\facade\Db;
  */
 class RedisLog implements LogHandlerInterface
 {
-    var $redis;
-    public $log_key = 'log';
-    public $host = "";
+    var    $redis;
+    public $log_key  = 'logtp6';
+    public $host     = "";
     public $password = "";
-    public $port = "";
+    public $port     = "";
 
     protected $mongoManager;
     protected $mongoCollection;
@@ -39,35 +39,30 @@ class RedisLog implements LogHandlerInterface
      * 配置参数
      * @var array
      */
-    public $config = [
-        'time_format' => 'c',
-        'single' => false,
-        'file_size' => 2097152,
-        'path' => '',
-        'apart_level' => [],
-        'max_files' => 0,
-        'json' => false,
-        'json_options' => JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES,
-        'format' => '[%s][%s] %s',
-    ];
+    public $config
+        = [
+            'time_format'  => 'c',
+            'single'       => false,
+            'file_size'    => 2097152,
+            'path'         => '',
+            'apart_level'  => [],
+            'max_files'    => 0,
+            'json'         => false,
+            'json_options' => JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES,
+            'format'       => '[%s][%s] %s',
+        ];
 
     // 实例化并传入参数
     public function __construct($config = [])
     {
-//        'hostname'          => env('database.hostname', '127.0.0.1'),
-//        'hostname'          => env('reids.hostname', '127.0.0.1'),
-//        'hostname'          => env('reids.auth', '123456'),
-//        'hostname'          => env('reids.hostname', '127.0.0.1'),
-        $this->host = env('reids.hostname', '127.0.0.1');
-        $this->password = env('reids.auth', '123456');
-        $this->port = env('reids.port', 6379);
-        $this->redis = new \Redis();
+        $this->host     = env('redis.hostname', '127.0.0.1');
+        $this->password = env('redis.auth', '123456');
+        $this->port     = env('redis.port', 6379);
+        $this->redis    = new \Redis();
         $this->redis->connect($this->host, $this->port);
-        $auth = $this->redis->auth($this->password);
-
-        $this->mongoManager = new Manager($this->getUri());
+        $auth                  = $this->redis->auth($this->password);
+        $this->mongoManager    = new Manager($this->getUri());
         $this->mongoCollection = new Collection($this->mongoManager, "redis_log", "test");
-
         return $this->redis;
     }
 
@@ -80,7 +75,7 @@ class RedisLog implements LogHandlerInterface
     {
         if (FALSE == (self::$_instance instanceof self)) {
 
-            self::$_instance = new self(env('reids.hostname', '127.0.0.1'), env('reids.port', 6379), env('reids.auth', '123456'));
+            self::$_instance = new self(env('redis.hostname', '127.0.0.1'), env('redis.port', 6379), env('redis.auth', '123456'));
         }
         return self::$_instance;
     }
@@ -123,37 +118,36 @@ class RedisLog implements LogHandlerInterface
      */
     public function save(array $log): bool
     {
-        $request = Request::instance();
+        $request     = Request::instance();
         $requestInfo = [
-            'url' => $request->url(true),
-            'domain' => $request->domain(),
-            'root' => $request->root(),
-            'baseFile' => $request->baseFile(),
-            'file' => $request->file(),
-//            'module' => $request->module(),
+            'url'        => $request->url(true),
+            'domain'     => $request->domain(),
+            'root'       => $request->root(),
+            'baseFile'   => $request->baseFile(),
+            'file'       => $request->file(),
+            //            'module' => $request->module(),
             'controller' => $request->controller(),
-            'action' => $request->action(),
-//            'routeInfo' => $request->routeInfo(),
-            'query' => $request->query(),
-            'baseurl' => $request->baseurl(),
-            'pathinfo' => $request->pathinfo(),
-//            'dispatch' => $request->dispatch(),
-            'ext' => $request->ext(),
-            'isAjax' => var_export($request->isAjax(), true),
-            'ip' => $request->ip(),
-            'method' => $request->method(),
-            'host' => $request->host(),
-            'uri' => $request->url(),
+            'action'     => $request->action(),
+            //            'routeInfo' => $request->routeInfo(),
+            'query'      => $request->query(),
+            'baseurl'    => $request->baseurl(),
+            'pathinfo'   => $request->pathinfo(),
+            //            'dispatch' => $request->dispatch(),
+            'ext'        => $request->ext(),
+            'isAjax'     => var_export($request->isAjax(), true),
+            'ip'         => $request->ip(),
+            'method'     => $request->method(),
+            'host'       => $request->host(),
+            'uri'        => $request->url(),
             'user-agent' => Request::header(),
-            'agent' => $_SERVER['HTTP_USER_AGENT'],
-            'body' => Request::param(),
-            'time' => date('Y-m-d H:i:s', time()),
-            'server_ip' => $_SERVER['SERVER_ADDR'],
+            'agent'      => $_SERVER['HTTP_USER_AGENT'],
+            'body'       => Request::param(),
+            'time'       => date('Y-m-d H:i:s', time()),
+            'server_ip'  => $_SERVER['SERVER_ADDR'],
         ];
         try {
             $destination = $this->getMasterLogFile();
-//            var_dump($destination);
-//        $path = dirname($destination);
+            $path        = dirname($destination);
 //        !is_dir($path) && mkdir($path, 0755, true);
             $info = [];
             // 日志信息封装
@@ -164,8 +158,10 @@ class RedisLog implements LogHandlerInterface
                     if (!is_string($msg)) {
                         $msg = var_export($msg, true);
                     }
-                    $message[] = $this->config['json'] ?
-                        json_encode(['time' => $time, 'type' => $type, 'msg' => $msg], $this->config['json_options']) :
+                    $message[] = $this->config['json']
+                        ?
+                        json_encode(['time' => $time, 'type' => $type, 'msg' => $msg], $this->config['json_options'])
+                        :
                         sprintf($this->config['format'], $time, $type, $msg);
                 }
                 if (true === $this->config['apart_level'] || in_array($type, $this->config['apart_level'])) {
@@ -176,27 +172,21 @@ class RedisLog implements LogHandlerInterface
                 }
                 $info[$type] = $message;
             }
-//        if (PHP_SAPI == 'cli') {
-//            $message = $this->parseCliLog($info);
-//        } else {
-//            // 添加调试日志
-//            $this->getDebugLog($info, $append, $apart);
-//            $message = $this->parseLog($info);
-//        }
             // 完毕
-            $arr_msg = ['request_info' => $requestInfo, 'msg' => $message];
-            $now_time = date("Y-m-d H:i:s");
+            $arr_msg    = ['request_info' => $requestInfo, 'msg' => $message];
+            $now_time   = date("Y-m-d H:i:s");
             $toRedisStr = json_encode($arr_msg, $this->config['json_options']) . "%" . $now_time;
+
             $ret = $this->rPush($this->log_key, $toRedisStr);
             $this->close();
         } catch (\RedisException $exception) {
             throw new Exception($exception->getMessage());
         }
         if (!empty($ret)) {
-           var_dump("入队的结果", $ret);
-           return (boolean)$ret ? true : false;
+            var_dump("入队的结果", $ret);
+            return (boolean)$ret ? true : false;
         } else {
-           return "入队失败了！";
+            return "入队失败了！";
         }
         if ($info) {
 //            return $this->write($info, $destination);
@@ -208,7 +198,7 @@ class RedisLog implements LogHandlerInterface
 
     /**
      * @Notes  : RedisLog 模块
-     * ->@Notes  : 日志出栈
+     * ->@Notes  : 日志出栈到MongoDB
      * @param $table
      * @user   : XiaoMing
      * @time   : 2020/6/19_17:33
@@ -229,18 +219,48 @@ class RedisLog implements LogHandlerInterface
                 break;
             }
             // 切割出时间和info
+            // lrem data_list 0 test_function
             $log_info_arr = explode("%", $log_info);
+
+            //{\"request_info\":
+            $pre_log_info     = substr($log_info_arr[0], 0, 16);
+            $request_info     = $log_info_arr[0];
+            $arr_request_info = json_decode($request_info, true);
+
+            $method     = $arr_request_info['request_info']['method'];
+            $ip         = $arr_request_info['request_info']['ip'];
+            $server_ip  = $arr_request_info['request_info']['server_ip'];
+            $time       = $arr_request_info['request_info']['time'];
+            $domain     = $arr_request_info['request_info']['domain'];
+            $host       = $arr_request_info['request_info']['host'];
+            $uri        = $arr_request_info['request_info']['uri'];
+            $pathinfo   = $arr_request_info['request_info']['pathinfo'];
+            $isAjax     = $arr_request_info['request_info']['isAjax'];
+            $user_agent = $arr_request_info['request_info']['user-agent'];
+            $body       = $arr_request_info['request_info']['body'];
             $arr_tmp[]
-                = ['log_json' => $log_info_arr[0], 'create_time' => $log_info_arr[1]];
+                        = [
+                'method'          => $method,
+                'ip'              => $ip,
+                'server_ip'       => $server_ip,
+                'time'            => $time,
+                'domain'          => $domain,
+                'host'            => $host,
+                'uri'             => $uri,
+                'pathinfo'        => $pathinfo,
+                'is_ajax'         => $isAjax,
+                'user_agent'      => $user_agent,
+                'body'            => $body,
+                'prefix_log_json' => $pre_log_info,
+                'log_json'        => $log_info_arr[0],
+                'create_time'     => $log_info_arr[1],
+            ];
             $count++;
         }
-        var_dump($count);
-        var_dump($max);
         // 判定存在数据，批量入库
         if ($count != 0) {
-//            $res = Db::connect('mongo')->table($table)->insertAll($arr_tmp);
-            $res =  $this->mongoCollection->insertMany($arr_tmp);
-            var_dump('$res', $res);
+
+            $res = $this->mongoCollection->insertMany($arr_tmp);
             // 输出入库log和入库结果;
             echo date("Y-m-d H:i:s") . " insert " . $count . " log info result:";
             echo json_encode($res);
@@ -256,7 +276,13 @@ class RedisLog implements LogHandlerInterface
         $this->close();
     }
 
-
+    /**
+     * @Notes  : xx 模块
+     * ->@Notes  : 日志出栈到MySQL
+     * @param $table
+     * @user   : XiaoMing
+     * @time   : 2020/6/28_13:35
+     */
     public function batchPopToDb($table)
     {
         // 获取现有消息队列的长度
@@ -274,18 +300,45 @@ class RedisLog implements LogHandlerInterface
             }
             // 切割出时间和info
             $log_info_arr = explode("%", $log_info);
+            //{\"request_info\":
+            $pre_log_info     = substr($log_info_arr[0], 0, 16);
+            $request_info     = $log_info_arr[0];
+            $arr_request_info = json_decode($request_info, true);
+
+            $method     = $arr_request_info['request_info']['method'];
+            $ip         = $arr_request_info['request_info']['ip'];
+            $server_ip  = $arr_request_info['request_info']['server_ip'];
+            $time       = $arr_request_info['request_info']['time'];
+            $domain     = $arr_request_info['request_info']['domain'];
+            $host       = $arr_request_info['request_info']['host'];
+            $uri        = $arr_request_info['request_info']['uri'];
+            $pathinfo   = $arr_request_info['request_info']['pathinfo'];
+            $isAjax     = $arr_request_info['request_info']['isAjax'];
+            $user_agent = $arr_request_info['request_info']['user-agent'];
+            $body       = $arr_request_info['request_info']['body'];
             $arr_tmp[]
-                = ['log_json' => $log_info_arr[0], 'create_time' => $log_info_arr[1]];
+                        = [
+                'method'          => $method,
+                'ip'              => $ip,
+                'server_ip'       => $server_ip,
+                'time'            => $time,
+                'domain'          => $domain,
+                'host'            => $host,
+                'uri'             => $uri,
+                'pathinfo'        => $pathinfo,
+                'is_ajax'         => $isAjax,
+                'user_agent'      => json_encode($user_agent),
+                'body'            => json_encode($body),
+                'prefix_log_json' => $pre_log_info,
+                'log_json'        => $log_info_arr[0],
+                'create_time'     => $log_info_arr[1],
+            ];
             $count++;
         }
+
         // 判定存在数据，批量入库
         if ($count != 0) {
-            foreach ($arr_tmp as $k => $v) {
-                $arr['log_json']    = $v['log_json'];
-                $arr['create_time'] = $v['create_time'];
-                $arr_in[]           = $arr;
-            }
-            $res = Db::connect(Config('mysql_db'))->table($table)->insertAll($arr_in);
+            $res = Db::connect('mysql')->table($table)->insertAll($arr_tmp);
             var_dump('$res', $res);
             // 输出入库log和入库结果;
             echo date("Y-m-d H:i:s") . " insert " . $count . " log info result:";
@@ -302,7 +355,6 @@ class RedisLog implements LogHandlerInterface
         // 释放redis
         $this->close();
     }
-
 
 
     /**
@@ -330,7 +382,7 @@ class RedisLog implements LogHandlerInterface
                     }
                     sleep(1);
                     if (!empty($task)) {
-                        $inse_data['log_json'] = $task;
+                        $inse_data['log_json']    = $task;
                         $inse_data['create_time'] = date("Y-m-d H:i:s");
 //                        var_dump("出队的值$count", $task);
 //                        $in_sql = "INSERT INTO test (log_json) VALUES ($task)";
@@ -338,7 +390,7 @@ class RedisLog implements LogHandlerInterface
 //                        $res1 = Db::table('test')->insertGetId($inse_data);
 //                        $res1                = false;
                         var_dump($inse_data);
-                        var_dump('长度剩下',$this->lLen($this->log_key));
+                        var_dump('长度剩下', $this->lLen($this->log_key));
                         // 数据库插入失败回滚
 //                        if (!$res1) {
 //                            $this->rPush($this->log_key, $task);
@@ -372,11 +424,15 @@ class RedisLog implements LogHandlerInterface
     {
         // 检测日志文件大小，超过配置大小则备份日志文件重新生成
         $this->checkLogSize($destination);
+
         $info = [];
+
         foreach ($message as $type => $msg) {
             $info[$type] = is_array($msg) ? implode(PHP_EOL, $msg) : $msg;
         }
+
         $message = implode(PHP_EOL, $info) . PHP_EOL;
+
         return error_log($message, 3, $destination);
     }
 
@@ -387,8 +443,10 @@ class RedisLog implements LogHandlerInterface
      */
     protected function getMasterLogFile(): string
     {
+
         if ($this->config['max_files']) {
             $files = glob($this->config['path'] . '*.log');
+
             try {
                 if (count($files) > $this->config['max_files']) {
                     unlink($files[0]);
@@ -397,17 +455,21 @@ class RedisLog implements LogHandlerInterface
                 //
             }
         }
+
         if ($this->config['single']) {
-            $name = is_string($this->config['single']) ? $this->config['single'] : 'single';
+            $name        = is_string($this->config['single']) ? $this->config['single'] : 'single';
             $destination = $this->config['path'] . $name . '.log';
         } else {
+
             if ($this->config['max_files']) {
                 $filename = date('Ymd') . '.log';
             } else {
                 $filename = date('Ym') . DIRECTORY_SEPARATOR . date('d') . '.log';
             }
+
             $destination = $this->config['path'] . $filename;
         }
+
         return $destination;
     }
 
@@ -420,14 +482,17 @@ class RedisLog implements LogHandlerInterface
      */
     protected function getApartLevelFile(string $path, string $type): string
     {
+
         if ($this->config['single']) {
             $name = is_string($this->config['single']) ? $this->config['single'] : 'single';
+
             $name .= '_' . $type;
         } elseif ($this->config['max_files']) {
             $name = date('Ymd') . '_' . $type;
         } else {
             $name = date('d') . '_' . $type;
         }
+
         return $path . DIRECTORY_SEPARATOR . $name . '.log';
     }
 
