@@ -197,7 +197,8 @@ class RedisLog implements LogHandlerInterface
 
 
     /**
-     * @Notes  : RedisLog 模块
+     * @Notes  : RedisLog 模块 同一台服务测试用
+     * 若多台部署到es3项目中
      * ->@Notes  : 日志出栈到MongoDB
      * @param $table
      * @user   : XiaoMing
@@ -211,7 +212,6 @@ class RedisLog implements LogHandlerInterface
         // 回滚数组
         $roll_back_arr = [];
         $arr_tmp       = [];
-        $arr_in        = [];
         while ($count < $max) {
             $log_info        = $this->lPop($this->log_key);
             $roll_back_arr[] = $log_info;

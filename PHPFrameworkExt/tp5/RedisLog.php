@@ -3,6 +3,7 @@
 // redis 记录日志
 //+----------------------------------------------------------------------
 namespace think\log\driver;
+
 use MongoDB\Collection;
 use MongoDB\Driver\Manager;
 use think\App;
@@ -10,7 +11,6 @@ use think\Db;
 use think\Exception;
 use think\Request;
 
-//2020-6-23 17:42:20
 ini_set('memory_limit', '-1');
 
 /**
@@ -158,7 +158,7 @@ class RedisLog
                 $message = $this->parseLog($info);
             }
             // 完毕
-            $arr_msg = ['request_info' => $requestInfo, 'msg' => $message];
+            $arr_msg  = ['request_info' => $requestInfo, 'msg' => $message];
             $now_time = date("Y-m-d H:i:s");
             $ret      = $this->rPush($this->log_key, json_encode($arr_msg, true) . "%" . $now_time);
             $this->close();
@@ -202,7 +202,8 @@ class RedisLog
 
 
     /**
-     * @Notes  : RedisLog 模块
+     * @Notes  : RedisLog 模块 同一台服务测试用
+     * 若多台部署到es3项目中
      * ->@Notes  : 日志出栈到MongoDB
      * @param $table
      * @user   : XiaoMing
@@ -216,7 +217,6 @@ class RedisLog
         // 回滚数组
         $roll_back_arr = [];
         $arr_tmp       = [];
-        $arr_in        = [];
         while ($count < $max) {
             $log_info        = $this->lPop($this->log_key);
             $roll_back_arr[] = $log_info;
@@ -224,7 +224,7 @@ class RedisLog
                 break;
             }
             // 切割出时间和info
-           
+            // lrem data_list 0 test_function
             $log_info_arr = explode("%", $log_info);
 
             //{\"request_info\":
@@ -328,7 +328,6 @@ class RedisLog
             echo date("Y-m-d H:i:s") . " insert " . $count . " log info result:";
             echo json_encode($res);
             echo "</br>\n";
-//            echo execute_time();
             // 数据库插入失败回滚
             if (!$res) {
                 foreach ($roll_back_arr as $value) {
